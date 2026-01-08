@@ -3,73 +3,74 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>井字棋（勝利特效版）</title>
+<title>井字棋 - 無敵 AI</title>
 
 <style>
 body {
     font-family: Arial, sans-serif;
     margin: 0;
-    background: #fafafa;
+    background: #f2f2f2;
     display: flex;
+    justify-content: center;
+    align-items: center;
     height: 100vh;
 }
 
-/* 左側 */
-#sidebar {
-    width: 240px;
-    background: #fff;
-    border-right: 2px solid #ccc;
-    padding: 20px;
+#app {
+    display: flex;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    padding: 30px 40px;
 }
 
-button {
+#sidebar {
+    width: 220px;
+    padding-right: 40px;
+}
+
+#sidebar button {
     width: 100%;
-    padding: 12px;
-    font-size: 16px;
+    padding: 14px;
+    margin-bottom: 18px;
+    font-size: 18px;
+    border-radius: 8px;
+    border: none;
+    background: #4a90e2;
+    color: white;
     cursor: pointer;
 }
 
-/* 棋盤區 */
-#game-container {
-    flex: 1;
-    display: flex;
-    justify-content: flex-end;
-    align-items: flex-start;
-    padding: 30px;
-    position: relative;
+#sidebar button:disabled {
+    background: #aaa;
 }
 
 #board {
     display: grid;
-    grid-template-columns: repeat(3, 100px);
-    grid-template-rows: repeat(3, 100px);
-    gap: 5px;
+    grid-template-columns: repeat(3, 140px);
+    grid-template-rows: repeat(3, 140px);
+    gap: 10px;
 }
 
 .cell {
-    width: 100px;
-    height: 100px;
-    border: 2px solid #333;
-    font-size: 60px;
+    width: 140px;
+    height: 140px;
+    border: 3px solid #333;
+    font-size: 80px;
     display: flex;
     justify-content: center;
     align-items: center;
-    background: #fff;
+    cursor: pointer;
 }
 
-.cell.win {
-    background: #ffe066;
-    animation: pop 0.4s ease-in-out infinite alternate;
+.cell.disabled {
+    pointer-events: none;
+    background: #eee;
 }
 
-@keyframes pop {
-    from { transform: scale(1); }
-    to { transform: scale(1.1); }
-}
-
-/* 遮罩 */
-#overlay {
-    position: absolute;
+/* 結果提示框 */
+#resultModal {
+    position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.6);
     display: none;
@@ -77,164 +78,196 @@ button {
     align-items: center;
 }
 
-/* 彈窗 */
-#modal {
-    background: #fff;
+#resultBox {
+    background: white;
     padding: 30px 40px;
     border-radius: 10px;
     text-align: center;
-    animation: fadeIn 0.4s ease;
-}
-
-@keyframes fadeIn {
-    from { transform: scale(0.7); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
-}
-
-/* 粒子 */
-.particle {
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    background: gold;
-    border-radius: 50%;
-    animation: explode 1s ease-out forwards;
-}
-
-@keyframes explode {
-    to {
-        transform: translate(var(--x), var(--y));
-        opacity: 0;
-    }
 }
 </style>
 </head>
+
 <body>
 
-<div id="sidebar">
-    <h3>🤖 人機對戰</h3>
-    <button id="resetBtn">重新開始</button>
+<div id="app">
+    <div id="sidebar">
+        <button id="undoBtn" disabled>悔棋（2秒內）</button>
+        <button id="resetBtn">重開一局</button>
+    </div>
+
+    <div id="board"></div>
 </div>
 
-<div id="game-container">
-    <div id="board"></div>
-
-    <!-- 勝利特效 -->
-    <div id="overlay">
-        <div id="modal">
-            <h2 id="resultText"></h2>
-            <button onclick="resetGame()">再玩一次</button>
-        </div>
+<div id="resultModal">
+    <div id="resultBox">
+        <h2 id="resultText"></h2>
+        <button onclick="resetGame()">再玩一局</button>
     </div>
 </div>
 
 <script>
 const boardEl = document.getElementById("board");
-const overlay = document.getElementById("overlay");
+const undoBtn = document.getElementById("undoBtn");
+const resetBtn = document.getElementById("resetBtn");
+const resultModal = document.getElementById("resultModal");
 const resultText = document.getElementById("resultText");
 
 let board = Array(9).fill("");
+let currentPlayer = "X"; // 玩家
+let lastMoveIndex = null;
+let canUndo = false;
+let undoTimer = null;
 let gameOver = false;
 
 const winPatterns = [
-    [0,1,2],[3,4,5],[6,7,8],
-    [0,3,6],[1,4,7],[2,5,8],
-    [0,4,8],[2,4,6]
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
 ];
 
+/* 建立棋盤 */
 function createBoard() {
     boardEl.innerHTML = "";
     board.forEach((val, idx) => {
         const cell = document.createElement("div");
         cell.className = "cell";
         cell.textContent = val;
-        cell.onclick = () => playerMove(idx);
+        cell.dataset.index = idx;
+        if (gameOver || currentPlayer === "O") {
+            cell.classList.add("disabled");
+        }
+        cell.addEventListener("click", onPlayerMove);
         boardEl.appendChild(cell);
     });
 }
 
-function playerMove(i) {
-    if (board[i] || gameOver) return;
-    board[i] = "X";
+/* 玩家下棋 */
+function onPlayerMove(e) {
+    const idx = e.target.dataset.index;
+    if (board[idx] || gameOver) return;
+
+    makeMove(idx, "X");
+
+    if (!gameOver) {
+        setTimeout(() => {
+            const best = getBestMoveMinimax();
+            makeMove(best, "O");
+        }, 400);
+    }
+}
+
+/* 落子 */
+function makeMove(idx, player) {
+    board[idx] = player;
+    lastMoveIndex = idx;
     createBoard();
-    if (checkEnd("X")) return;
-    setTimeout(aiMove, 400);
-}
+    startUndoTimer();
 
-function aiMove() {
-    const move = randomMove();
-    board[move] = "O";
-    createBoard();
-    checkEnd("O");
-}
-
-function randomMove() {
-    const empty = board.map((v,i)=>v===""?i:null).filter(v=>v!==null);
-    return empty[Math.floor(Math.random()*empty.length)];
-}
-
-function checkEnd(player) {
-    const winLine = checkWin(player);
-    if (winLine) {
-        showWin(player, winLine);
-        return true;
+    if (checkWinner(player)) {
+        endGame(player === "X" ? "🎉 你贏了！（奇蹟）" : "🤖 無敵 AI 獲勝！");
+        return;
     }
-    if (!board.includes("")) {
-        showDraw();
-        return true;
+
+    if (board.every(c => c)) {
+        endGame("🤝 平手（你真的很強）");
+        return;
     }
-    return false;
+
+    currentPlayer = player === "X" ? "O" : "X";
 }
 
-function checkWin(player) {
-    for (const p of winPatterns) {
-        if (p.every(i => board[i] === player)) return p;
-    }
-    return null;
+/* 勝負判定 */
+function checkWinner(player) {
+    return winPatterns.some(p => p.every(i => board[i] === player));
 }
 
-function showWin(player, line) {
-    gameOver = true;
+/* Minimax 無敵 AI */
+function getBestMoveMinimax() {
+    let bestScore = -Infinity;
+    let move;
 
-    // 高亮勝利格
-    line.forEach(i => {
-        boardEl.children[i].classList.add("win");
-        createParticles(boardEl.children[i]);
+    board.forEach((cell, idx) => {
+        if (!cell) {
+            board[idx] = "O";
+            let score = minimax(board, 0, false);
+            board[idx] = "";
+            if (score > bestScore) {
+                bestScore = score;
+                move = idx;
+            }
+        }
     });
-
-    resultText.textContent = player === "X" ? "🎉 你贏了！" : "🤖 電腦勝利";
-    overlay.style.display = "flex";
+    return move;
 }
 
-function showDraw() {
-    gameOver = true;
-    resultText.textContent = "🤝 平手";
-    overlay.style.display = "flex";
-}
+function minimax(newBoard, depth, isMax) {
+    if (checkWinner("O")) return 10 - depth;
+    if (checkWinner("X")) return depth - 10;
+    if (newBoard.every(c => c)) return 0;
 
-function createParticles(cell) {
-    const rect = cell.getBoundingClientRect();
-    for (let i = 0; i < 10; i++) {
-        const p = document.createElement("div");
-        p.className = "particle";
-        p.style.left = rect.left + rect.width / 2 + "px";
-        p.style.top = rect.top + rect.height / 2 + "px";
-        p.style.setProperty("--x", `${(Math.random()-0.5)*200}px`);
-        p.style.setProperty("--y", `${(Math.random()-0.5)*200}px`);
-        document.body.appendChild(p);
-        setTimeout(() => p.remove(), 1000);
+    if (isMax) {
+        let best = -Infinity;
+        newBoard.forEach((c, i) => {
+            if (!c) {
+                newBoard[i] = "O";
+                best = Math.max(best, minimax(newBoard, depth + 1, false));
+                newBoard[i] = "";
+            }
+        });
+        return best;
+    } else {
+        let best = Infinity;
+        newBoard.forEach((c, i) => {
+            if (!c) {
+                newBoard[i] = "X";
+                best = Math.min(best, minimax(newBoard, depth + 1, true));
+                newBoard[i] = "";
+            }
+        });
+        return best;
     }
 }
+
+/* 結束遊戲 */
+function endGame(msg) {
+    gameOver = true;
+    resultText.textContent = msg;
+    resultModal.style.display = "flex";
+}
+
+/* 悔棋（2 秒） */
+function startUndoTimer() {
+    canUndo = true;
+    undoBtn.disabled = false;
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => {
+        canUndo = false;
+        undoBtn.disabled = true;
+    }, 2000);
+}
+
+undoBtn.addEventListener("click", () => {
+    if (!canUndo || gameOver) return;
+    board[lastMoveIndex] = "";
+    currentPlayer = "X";
+    canUndo = false;
+    undoBtn.disabled = true;
+    createBoard();
+});
+
+/* 重開 */
+resetBtn.addEventListener("click", resetGame);
 
 function resetGame() {
     board = Array(9).fill("");
+    currentPlayer = "X";
     gameOver = false;
-    overlay.style.display = "none";
+    undoBtn.disabled = true;
+    resultModal.style.display = "none";
     createBoard();
 }
 
-document.getElementById("resetBtn").onclick = resetGame;
-
+/* 初始化 */
 createBoard();
 </script>
 
