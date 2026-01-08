@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>井字棋</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    background: #f2f2f2;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+/* 主容器 */
+#app {
+    display: flex;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    padding: 30px 40px;
+}
+
+/* 左側控制區 */
+#sidebar {
+    width: 220px;
+    padding-right: 40px;
+}
+
+#sidebar button {
+    width: 100%;
+    padding: 14px;
+    margin-bottom: 18px;
+    font-size: 18px;
+    cursor: pointer;
+    border-radius: 8px;
+    border: none;
+    background: #4a90e2;
+    color: white;
+}
+
+#sidebar button:disabled {
+    background: #aaa;
+    cursor: not-allowed;
+}
+
+/* 棋盤區 */
+#game-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#board {
+    display: grid;
+    grid-template-columns: repeat(3, 140px);
+    grid-template-rows: repeat(3, 140px);
+    gap: 10px;
+}
+
+.cell {
+    width: 140px;
+    height: 140px;
+    background: #fff;
+    border: 3px solid #333;
+    font-size: 80px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+}
+
+.cell.disabled {
+    pointer-events: none;
+    background: #eee;
+}
+
+/* 勝負提示框 */
+#resultModal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    justify-content: center;
+    align-items: center;
+}
+
+#resultBox {
+    background: white;
+    padding: 30px 40px;
+    border-radius: 10px;
+    text-align: center;
+}
+
+#resultBox h2 {
+    margin-bottom: 20px;
+}
+
+#resultBox button {
+    padding: 12px 24px;
+    font-size: 16px;
+    border: none;
+    border-radius: 6px;
+    background: #4a90e2;
+    color: white;
+    cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div id="app">
+    <div id="sidebar">
+        <button id="undoBtn" disabled>悔棋（2秒內）</button>
+        <button id="pauseBtn">暫停</button>
+        <button id="resetBtn">重開一局</button>
+    </div>
+
+    <div id="game-container">
+        <div id="board"></div>
+    </div>
+</div>
+
+<!-- 勝負提示框 -->
+<div id="resultModal">
+    <div id="resultBox">
+        <h2 id="resultText"></h2>
+        <button onclick="resetGame()">再玩一局</button>
+    </div>
+</div>
+
+<script>
+const boardEl = document.getElementById("board");
+const undoBtn = document.getElementById("undoBtn");
+const pauseBtn = document.getElementById("pauseBtn");
+const resetBtn = document.getElementById("resetBtn");
+const resultModal = document.getElementById("resultModal");
+const resultText = document.getElementById("resultText");
+
+let board = Array(9).fill("");
+let currentPlayer = "X";
+let lastMoveIndex = null;
+let canUndo = false;
+let undoTimer = null;
+let paused = false;
+let gameOver = false;
+
+const winPatterns = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+function createBoard() {
+    boardEl.innerHTML = "";
+    board.forEach((val, idx) => {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.textContent = val;
+        cell.dataset.index = idx;
+        if (paused || gameOver) cell.classList.add("disabled");
+        cell.addEventListener("click", onCellClick);
+        boardEl.appendChild(cell);
+    });
+}
+
+function onCellClick(e) {
+    const idx = e.target.dataset.index;
+    if (board[idx] || paused || gameOver) return;
+
+    board[idx] = currentPlayer;
+    lastMoveIndex = idx;
+    createBoard();
+    startUndoTimer();
+
+    if (checkWinner(currentPlayer)) {
+        endGame(`🎉 玩家 ${currentPlayer} 勝利！`);
+        return;
+    }
+
+    if (board.every(cell => cell !== "")) {
+        endGame("🤝 平手！");
+        return;
+    }
+
+    currentPlayer = currentPlayer === "X" ? "O" : "X";
+}
+
+function checkWinner(player) {
+    return winPatterns.some(pattern =>
+        pattern.every(i => board[i] === player)
+    );
+}
+
+function endGame(message) {
+    gameOver = true;
+    resultText.textContent = message;
+    resultModal.style.display = "flex";
+}
+
+function startUndoTimer() {
+    canUndo = true;
+    undoBtn.disabled = false;
+    if (undoTimer) clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => {
+        canUndo = false;
+        undoBtn.disabled = true;
+    }, 2000);
+}
+
+undoBtn.addEventListener("click", () => {
+    if (!canUndo || lastMoveIndex === null || gameOver) return;
+    board[lastMoveIndex] = "";
+    currentPlayer = currentPlayer === "X" ? "O" : "X";
+    canUndo = false;
+    undoBtn.disabled = true;
+    clearTimeout(undoTimer);
+    createBoard();
+});
+
+pauseBtn.addEventListener("click", () => {
+    paused = !paused;
+    pauseBtn.textContent = paused ? "繼續" : "暫停";
+    createBoard();
+});
+
+resetBtn.addEventListener("click", resetGame);
+
+function resetGame() {
+    board = Array(9).fill("");
+    currentPlayer = "X";
+    lastMoveIndex = null;
+    canUndo = false;
+    paused = false;
+    gameOver = false;
+    undoBtn.disabled = true;
+    pauseBtn.textContent = "暫停";
+    resultModal.style.display = "none";
+    clearTimeout(undoTimer);
+    createBoard();
+}
+
+createBoard();
+</script>
+
+</body>
+</html>
