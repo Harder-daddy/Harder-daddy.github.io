@@ -41,10 +41,6 @@ body {
     cursor: pointer;
 }
 
-#sidebar button:disabled {
-    background: #aaa;
-}
-
 #board {
     display: grid;
     grid-template-columns: repeat(3, 140px);
@@ -91,7 +87,6 @@ body {
 
 <div id="app">
     <div id="sidebar">
-        <button id="undoBtn" disabled>悔棋（2秒內）</button>
         <button id="resetBtn">重開一局</button>
     </div>
 
@@ -107,16 +102,12 @@ body {
 
 <script>
 const boardEl = document.getElementById("board");
-const undoBtn = document.getElementById("undoBtn");
 const resetBtn = document.getElementById("resetBtn");
 const resultModal = document.getElementById("resultModal");
 const resultText = document.getElementById("resultText");
 
 let board = Array(9).fill("");
 let currentPlayer = "X"; // 玩家
-let lastMoveIndex = null;
-let canUndo = false;
-let undoTimer = null;
 let gameOver = false;
 
 const winPatterns = [
@@ -133,9 +124,11 @@ function createBoard() {
         cell.className = "cell";
         cell.textContent = val;
         cell.dataset.index = idx;
+
         if (gameOver || currentPlayer === "O") {
             cell.classList.add("disabled");
         }
+
         cell.addEventListener("click", onPlayerMove);
         boardEl.appendChild(cell);
     });
@@ -150,8 +143,8 @@ function onPlayerMove(e) {
 
     if (!gameOver) {
         setTimeout(() => {
-            const best = getBestMoveMinimax();
-            makeMove(best, "O");
+            const bestMove = getBestMoveMinimax();
+            makeMove(bestMove, "O");
         }, 400);
     }
 }
@@ -159,12 +152,10 @@ function onPlayerMove(e) {
 /* 落子 */
 function makeMove(idx, player) {
     board[idx] = player;
-    lastMoveIndex = idx;
     createBoard();
-    startUndoTimer();
 
     if (checkWinner(player)) {
-        endGame(player === "X" ? "🎉 你贏了！（奇蹟）" : "🤖 無敵 AI 獲勝！");
+        endGame(player === "X" ? "🎉 你贏了！（奇蹟發生）" : "🤖 無敵 AI 獲勝！");
         return;
     }
 
@@ -181,7 +172,7 @@ function checkWinner(player) {
     return winPatterns.some(p => p.every(i => board[i] === player));
 }
 
-/* Minimax 無敵 AI */
+/* 無敵 AI：Minimax */
 function getBestMoveMinimax() {
     let bestScore = -Infinity;
     let move;
@@ -210,66 +201,3 @@ function minimax(newBoard, depth, isMax) {
         newBoard.forEach((c, i) => {
             if (!c) {
                 newBoard[i] = "O";
-                best = Math.max(best, minimax(newBoard, depth + 1, false));
-                newBoard[i] = "";
-            }
-        });
-        return best;
-    } else {
-        let best = Infinity;
-        newBoard.forEach((c, i) => {
-            if (!c) {
-                newBoard[i] = "X";
-                best = Math.min(best, minimax(newBoard, depth + 1, true));
-                newBoard[i] = "";
-            }
-        });
-        return best;
-    }
-}
-
-/* 結束遊戲 */
-function endGame(msg) {
-    gameOver = true;
-    resultText.textContent = msg;
-    resultModal.style.display = "flex";
-}
-
-/* 悔棋（2 秒） */
-function startUndoTimer() {
-    canUndo = true;
-    undoBtn.disabled = false;
-    clearTimeout(undoTimer);
-    undoTimer = setTimeout(() => {
-        canUndo = false;
-        undoBtn.disabled = true;
-    }, 2000);
-}
-
-undoBtn.addEventListener("click", () => {
-    if (!canUndo || gameOver) return;
-    board[lastMoveIndex] = "";
-    currentPlayer = "X";
-    canUndo = false;
-    undoBtn.disabled = true;
-    createBoard();
-});
-
-/* 重開 */
-resetBtn.addEventListener("click", resetGame);
-
-function resetGame() {
-    board = Array(9).fill("");
-    currentPlayer = "X";
-    gameOver = false;
-    undoBtn.disabled = true;
-    resultModal.style.display = "none";
-    createBoard();
-}
-
-/* 初始化 */
-createBoard();
-</script>
-
-</body>
-</html>
