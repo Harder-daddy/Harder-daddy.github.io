@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>井字棋 AI</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    background: #f2f2f2;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+#app {
+    display: flex;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    padding: 30px 40px;
+}
+
+#sidebar {
+    width: 220px;
+    padding-right: 40px;
+}
+
+#sidebar button {
+    width: 100%;
+    padding: 14px;
+    margin-bottom: 18px;
+    font-size: 18px;
+    border-radius: 8px;
+    border: none;
+    background: #4a90e2;
+    color: white;
+    cursor: pointer;
+}
+
+#sidebar button:disabled {
+    background: #aaa;
+}
+
+#board {
+    display: grid;
+    grid-template-columns: repeat(3, 140px);
+    grid-template-rows: repeat(3, 140px);
+    gap: 10px;
+}
+
+.cell {
+    width: 140px;
+    height: 140px;
+    border: 3px solid #333;
+    font-size: 80px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+}
+
+.cell.disabled {
+    pointer-events: none;
+    background: #eee;
+}
+
+/* 結果提示框 */
+#resultModal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    justify-content: center;
+    align-items: center;
+}
+
+#resultBox {
+    background: white;
+    padding: 30px 40px;
+    border-radius: 10px;
+    text-align: center;
+}
+</style>
+</head>
+
+<body>
+
+<div id="app">
+    <div id="sidebar">
+        <button id="undoBtn" disabled>悔棋（2秒內）</button>
+        <button id="pauseBtn">暫停</button>
+        <button id="resetBtn">重開一局</button>
+    </div>
+
+    <div id="board"></div>
+</div>
+
+<div id="resultModal">
+    <div id="resultBox">
+        <h2 id="resultText"></h2>
+        <button onclick="resetGame()">再玩一局</button>
+    </div>
+</div>
+
+<script>
+const boardEl = document.getElementById("board");
+const undoBtn = document.getElementById("undoBtn");
+const pauseBtn = document.getElementById("pauseBtn");
+const resetBtn = document.getElementById("resetBtn");
+const resultModal = document.getElementById("resultModal");
+const resultText = document.getElementById("resultText");
+
+let board = Array(9).fill("");
+let currentPlayer = "X"; // 玩家
+let lastMoveIndex = null;
+let canUndo = false;
+let undoTimer = null;
+let paused = false;
+let gameOver = false;
+
+const winPatterns = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+function createBoard() {
+    boardEl.innerHTML = "";
+    board.forEach((val, idx) => {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.textContent = val;
+        cell.dataset.index = idx;
+        if (paused || gameOver || currentPlayer === "O") {
+            cell.classList.add("disabled");
+        }
+        cell.addEventListener("click", onPlayerMove);
+        boardEl.appendChild(cell);
+    });
+}
+
+function onPlayerMove(e) {
+    const idx = e.target.dataset.index;
+    if (board[idx] || paused || gameOver) return;
+
+    makeMove(idx, "X");
+
+    if (!gameOver) {
+        setTimeout(computerMove, 500);
+    }
+}
+
+function makeMove(idx, player) {
+    board[idx] = player;
+    lastMoveIndex = idx;
+    createBoard();
+    startUndoTimer();
+
+    if (checkWinner(player)) {
+        endGame(player === "X" ? "🎉 你贏了！" : "🤖 電腦獲勝！");
+        return;
+    }
+
+    if (board.every(c => c
